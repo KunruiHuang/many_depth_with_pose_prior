@@ -6,8 +6,8 @@
 import torch
 import random
 import numpy as np
-from .trainer import Trainer
-from .options import MonodepthOptions
+from manydepth.trainer import Trainer
+from manydepth.options import MonodepthOptions
 
 
 def seed_all(seed):

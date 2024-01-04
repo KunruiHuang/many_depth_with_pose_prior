@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "--data_path", "/home/hkr/Dataset/iphone12_collect_data",
+                "--log_dir", "/home/hkr/Code/many_depth_log",
+                "--dataset", "iphone",
+                "--split", "iphone",
+                "--height", "384",
+                "--width", "768",
+                "--batch_size", "8",
+                "--use_vio_pose_prior"
+            ],
+            "cwd": "/home/hkr/Code/manydepth",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "/home/hkr/Code/manydepth/manydepth:/home/hkr/Code/manydepth/manydepth/datasets:"
+            }
+        }
+    ]
+ }
+ 

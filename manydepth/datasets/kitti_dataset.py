@@ -58,8 +58,10 @@ class KITTIDataset(MonoDataset):
             side = line[2]
         else:
             side = None
-
-        return folder, frame_index, side
+                #test
+        pose_dict = None
+        #end of test
+        return folder, frame_index, side, pose_dict
 
     def get_color(self, folder, frame_index, side, do_flip):
         color = self.loader(self.get_image_path(folder, frame_index, side))

@@ -29,7 +29,10 @@ class CityscapesPreprocessedDataset(MonoDataset):
         """
         city, frame_name = self.filenames[index].split()
         side = None
-        return city, frame_name, side
+                #test
+        pose_dict = None
+        #end of test
+        return city, frame_name, side,pose_dict
 
     def check_depth(self):
         return False

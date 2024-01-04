@@ -30,8 +30,8 @@ class CityscapesEvalDataset(MonoDataset):
         """
         city, frame_name = self.filenames[index].split()
         side = None
-
-        return city, frame_name, side
+        pose_dict = None
+        return city, frame_name, side,pose_dict
 
     def check_depth(self):
         return False

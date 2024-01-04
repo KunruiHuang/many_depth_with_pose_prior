@@ -1,3 +1,5 @@
-checkpoints/
-checkpoints
-checkpoints/*
+checkpoints*/
+checkpoints*
+checkpoints*/*
+splits/
+.vscode/

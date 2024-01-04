@@ -6,6 +6,8 @@
 
 import os
 import random
+import sys
+sys.path.append("..") 
 os.environ["MKL_NUM_THREADS"] = "1"  # noqa F402
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  # noqa F402
 os.environ["OMP_NUM_THREADS"] = "1"  # noqa F402
@@ -17,10 +19,25 @@ import cv2
 import torch
 import torch.utils.data as data
 from torchvision import transforms
-
 cv2.setNumThreads(0)
-
-
+import numpy as np
+from scipy.spatial.transform import Rotation
+def compute_relative_pose(pose1, pose2):
+    # Extract translation and quaternion components
+    t1, t2 = np.array([pose1[:3]]), np.array([pose2[:3]])
+    q1, q2 = np.array([pose1[4], pose1[5], pose1[6], pose1[3]]), np.array([pose2[4], pose2[5], pose2[6], pose2[3]])
+    # Compute relative translation
+    relative_translation = t2 - t1
+    # Compute relative rotation
+    r1 = Rotation.from_quat(q1)
+    r2 = Rotation.from_quat(q2)
+    relative_rotation = r2 * r1.inv()
+    # Get relative rotation as a 4x4 matrix
+    relative_matrix = np.eye(4)
+    relative_matrix[:3, :3] = relative_rotation.as_matrix()
+    relative_matrix[:3, 3] = relative_translation.flatten()
+    relative_matrix_torch = torch.tensor(relative_matrix, dtype=torch.float32)
+    return relative_matrix_torch
 def pil_loader(path):
     # open path as file to avoid ResourceWarning
     # (https://github.com/python-pillow/Pillow/issues/835)
@@ -106,6 +123,7 @@ class MonoDataset(data.Dataset):
                     inputs[(n + "_aug", im, i)] = inputs[(n, im, i)]
                 else:
                     inputs[(n + "_aug", im, i)] = self.to_tensor(color_aug(f))
+                    # inputs[(n + "_aug", im, i)] = inputs[(n, im, i)]
 
     def __len__(self):
         return len(self.filenames)
@@ -136,11 +154,10 @@ class MonoDataset(data.Dataset):
         """
         inputs = {}
 
-        do_color_aug = self.is_train and random.random() > 0.5
+        do_color_aug = False
         do_flip = self.is_train and random.random() > 0.5
 
-        folder, frame_index, side = self.index_to_folder_and_frame_idx(index)
-
+        folder, frame_index, side,pose_dict = self.index_to_folder_and_frame_idx(index)
         poses = {}
         if type(self).__name__ in ["CityscapesPreprocessedDataset", "CityscapesEvalDataset"]:
             inputs.update(self.get_colors(folder, frame_index, side, do_flip))
@@ -154,6 +171,14 @@ class MonoDataset(data.Dataset):
                     try:
                         inputs[("color", i, -1)] = self.get_color(
                             folder, frame_index + i, side, do_flip)
+                        #test
+                        if i != 0 and pose_dict is not None:
+                            folder, frame_index, side,pose_dict_i = self.index_to_folder_and_frame_idx(index + i)
+                            pose0 = [pose_dict['tx'], pose_dict['ty'], pose_dict['tz'], pose_dict['qw'], pose_dict['qx'], pose_dict['qy'], pose_dict['qz']]
+                            posei = [pose_dict_i['tx'], pose_dict_i['ty'], pose_dict_i['tz'], pose_dict_i['qw'], pose_dict_i['qx'], pose_dict_i['qy'], pose_dict_i['qz']]
+                            relative_matrix = compute_relative_pose(pose0, posei)
+                            inputs[("cam_T_cam", 0, i)] = relative_matrix
+                        #end of test
                     except FileNotFoundError as e:
                         if i != 0:
                             # fill with dummy values
@@ -176,7 +201,6 @@ class MonoDataset(data.Dataset):
 
             inputs[("K", scale)] = torch.from_numpy(K)
             inputs[("inv_K", scale)] = torch.from_numpy(inv_K)
-
         if do_color_aug:
             color_aug = transforms.ColorJitter.get_params(
                 self.brightness, self.contrast, self.saturation, self.hue)

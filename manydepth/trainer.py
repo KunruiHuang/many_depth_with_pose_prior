@@ -20,14 +20,17 @@ from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 
 import json
+import sys
+sys.path.append("/home/hkr/Code/manydepth/manydepth")
 
-from .utils import readlines, sec_to_hm_str
-from .layers import SSIM, BackprojectDepth, Project3D, transformation_from_parameters, \
+
+from manydepth.layers import SSIM, BackprojectDepth, Project3D, transformation_from_parameters, \
     disp_to_depth, get_smooth_loss, compute_depth_errors
-
+from manydepth.utils import readlines, sec_to_hm_str
 from manydepth import datasets, networks
 import matplotlib.pyplot as plt
-
+import numpy as np
+from scipy.spatial.transform import Rotation
 
 _DEPTH_COLORMAP = plt.get_cmap('plasma', 256)  # for plotting
 
@@ -106,21 +109,20 @@ class Trainer:
         if self.train_teacher_and_pose:
             self.parameters_to_train += list(self.models["mono_encoder"].parameters())
             self.parameters_to_train += list(self.models["mono_depth"].parameters())
+        if not self.opt.use_vio_pose_prior:
+            self.models["pose_encoder"] = \
+                networks.ResnetEncoder(18, self.opt.weights_init == "pretrained",
+                                    num_input_images=self.num_pose_frames)
+            self.models["pose_encoder"].to(self.device)
 
-        self.models["pose_encoder"] = \
-            networks.ResnetEncoder(18, self.opt.weights_init == "pretrained",
-                                   num_input_images=self.num_pose_frames)
-        self.models["pose_encoder"].to(self.device)
-
-        self.models["pose"] = \
-            networks.PoseDecoder(self.models["pose_encoder"].num_ch_enc,
-                                 num_input_features=1,
-                                 num_frames_to_predict_for=2)
-        self.models["pose"].to(self.device)
-
-        if self.train_teacher_and_pose:
-            self.parameters_to_train += list(self.models["pose_encoder"].parameters())
-            self.parameters_to_train += list(self.models["pose"].parameters())
+            self.models["pose"] = \
+                networks.PoseDecoder(self.models["pose_encoder"].num_ch_enc,
+                                    num_input_features=1,
+                                    num_frames_to_predict_for=2)
+            self.models["pose"].to(self.device)
+            if self.train_teacher_and_pose:
+                self.parameters_to_train += list(self.models["pose_encoder"].parameters())
+                self.parameters_to_train += list(self.models["pose"].parameters())
 
         self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
         self.model_lr_scheduler = optim.lr_scheduler.StepLR(
@@ -139,7 +141,8 @@ class Trainer:
         # DATA
         datasets_dict = {"kitti": datasets.KITTIRAWDataset,
                          "cityscapes_preprocessed": datasets.CityscapesPreprocessedDataset,
-                         "kitti_odom": datasets.KITTIOdomDataset}
+                         "kitti_odom": datasets.KITTIOdomDataset,
+                         "iphone": datasets.IPHONE12Dataset }
         self.dataset = datasets_dict[self.opt.dataset]
 
         fpath = os.path.join("splits", self.opt.split, "{}_files.txt")
@@ -297,14 +300,17 @@ class Trainer:
         outputs = {}
 
         # predict poses for all frames
-        if self.train_teacher_and_pose:
-            pose_pred = self.predict_poses(inputs, None)
-        else:
-            with torch.no_grad():
+        print("self.opt.use_vio_pose_prior:",self.opt.use_vio_pose_prior)
+        if not self.opt.use_vio_pose_prior:
+            if self.train_teacher_and_pose:
                 pose_pred = self.predict_poses(inputs, None)
-        outputs.update(pose_pred)
-        mono_outputs.update(pose_pred)
-
+            else:
+                with torch.no_grad():
+                    pose_pred = self.predict_poses(inputs, None)
+        else:
+            self.get_vio_poses(inputs, None)
+        outputs.update(inputs)
+        mono_outputs.update(inputs)
         # grab poses + frames and stack for input to the multi frame network
         relative_poses = [inputs[('relative_pose', idx)] for idx in self.matching_ids[1:]]
         relative_poses = torch.stack(relative_poses, 1)
@@ -424,7 +430,7 @@ class Trainer:
                         pose_inputs = [pose_feats[f_i], pose_feats[0]]
                     else:
                         pose_inputs = [pose_feats[0], pose_feats[f_i]]
-
+                    
                     pose_inputs = [self.models["pose_encoder"](torch.cat(pose_inputs, 1))]
 
                     axisangle, translation = self.models["pose"](pose_inputs)
@@ -472,7 +478,20 @@ class Trainer:
             raise NotImplementedError
 
         return outputs
-
+    def get_vio_poses(self, inputs, features=None):
+        """Predict poses between input frames for monocular sequences.
+        """
+        outputs = {}
+        if self.num_pose_frames == 2:
+            for f_i in self.opt.frame_ids[1:]:
+                if f_i != "s":
+                    outputs[("cam_T_cam", 0, f_i)] = inputs[("cam_T_cam", 0, f_i)]
+            with torch.no_grad():
+                for fi in self.matching_ids[1:]:
+                    inputs[('relative_pose', fi)] = inputs[("cam_T_cam", 0, f_i)]
+        else:
+            raise NotImplementedError
+        return outputs
     def val(self):
         """Validate the model on a single minibatch
         """
@@ -779,9 +798,9 @@ class Trainer:
                     consistency_mask, self.step)
 
                 consistency_target = colormap(outputs["consistency_target/0"][j])
-                writer.add_image(
-                    "consistency_target/{}".format(j),
-                    consistency_target, self.step)
+                # writer.add_image(
+                #     "consistency_target/{}".format(j),
+                #     consistency_target, self.step)
 
     def save_opts(self):
         """Save options to disk so we know what we ran this experiment with
@@ -822,8 +841,10 @@ class Trainer:
         torch.save(self.model_optimizer.state_dict(), save_path)
 
     def load_mono_model(self):
-
-        model_list = ['pose_encoder', 'pose', 'mono_encoder', 'mono_depth']
+        if not self.opt.use_vio_pose_prior:
+            model_list = ['pose_encoder', 'pose', 'mono_encoder', 'mono_depth']
+        else:
+            model_list = ['mono_encoder', 'mono_depth']
         for n in model_list:
             print('loading {}'.format(n))
             path = os.path.join(self.opt.mono_weights_folder, "{}.pth".format(n))
