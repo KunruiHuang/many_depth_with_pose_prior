@@ -79,11 +79,11 @@ class MonodepthOptions:
         self.parser.add_argument("--min_depth",
                                  type=float,
                                  help="minimum depth",
-                                 default=0.1)
+                                 default=0.2)
         self.parser.add_argument("--max_depth",
                                  type=float,
                                  help="maximum depth",
-                                 default=100.0)
+                                 default=80.0)
         self.parser.add_argument("--frame_ids",
                                  nargs="+",
                                  type=int,
@@ -180,7 +180,7 @@ class MonodepthOptions:
                                  nargs="+",
                                  type=str,
                                  help="models to load",
-                                 default=["encoder", "depth", "pose_encoder", "pose"])
+                                 default=["encoder", "depth"])
 
         # LOGGING options
         self.parser.add_argument("--log_frequency",

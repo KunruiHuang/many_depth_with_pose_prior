@@ -7,10 +7,12 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 def readlines(filename):
-    """Read all the lines in a text file and return as a list
-    """
-    with open(filename, 'r') as f:
-        lines = f.read().splitlines()
+    lines = []
+    with open(filename, 'r') as file:
+        for line in file:
+            values = [val for val in line.split()]
+            assert len(values) == 16, f"Expected length 16, but got {len(values)}"
+            lines.append(values)
     return lines
 
 

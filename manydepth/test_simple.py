@@ -16,7 +16,7 @@ import torch
 from torchvision import transforms
 
 from manydepth import networks
-from .layers import transformation_from_parameters
+from manydepth.layers import transformation_from_parameters
 
 
 def parse_args():
@@ -66,7 +66,10 @@ def load_and_preprocess_intrinsics(intrinsics_path, resize_width, resize_height)
         return K.cuda(), invK.cuda()
     return K, invK
 
-
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 def test_simple(args):
     """Function to predict for a single image or folder of images
     """

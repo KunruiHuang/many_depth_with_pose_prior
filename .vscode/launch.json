@@ -1,4 +1,30 @@
-{
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Python: Current File",
+//             "type": "python",
+//             "request": "launch",
+//             "program": "${file}",
+//             "args": [
+//                 "--data_path", "/home/hkr/Dataset/iphone12_collect_data",
+//                 "--log_dir", "/home/hkr/Code/many_depth_log",
+//                 "--dataset", "iphone",
+//                 "--split", "iphone",
+//                 "--height", "384",
+//                 "--width", "768",
+//                 "--batch_size", "8",
+//                 "--use_vio_pose_prior"
+//             ],
+//             "cwd": "/home/hkr/Code/manydepth",
+//             "console": "integratedTerminal",
+//             "env": {
+//                 "PYTHONPATH": "/home/hkr/Code/manydepth/manydepth:/home/hkr/Code/manydepth/manydepth/datasets:"
+//             }
+//         }
+//     ]
+//  }
+ {
     "version": "0.2.0",
     "configurations": [
         {
@@ -7,14 +33,11 @@
             "request": "launch",
             "program": "${file}",
             "args": [
-                "--data_path", "/home/hkr/Dataset/iphone12_collect_data",
-                "--log_dir", "/home/hkr/Code/many_depth_log",
-                "--dataset", "iphone",
-                "--split", "iphone",
-                "--height", "384",
-                "--width", "768",
-                "--batch_size", "8",
-                "--use_vio_pose_prior"
+                // "-m", "manydepth.test_vio",
+                "--target_image_path", "/home/hkr/Code/manydepth/assets/0000001133.jpg",
+                "--source_image_path", "/home/hkr/Code/manydepth/assets/0000001134.jpg",
+                "--intrinsics_json_path", "assets/test_sequence_intrinsics.json",
+                "--model_path", "/home/hkr/Code/manydepth_with_vio_log/mdp/models/weights_12/"
             ],
             "cwd": "/home/hkr/Code/manydepth",
             "console": "integratedTerminal",

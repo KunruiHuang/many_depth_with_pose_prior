@@ -22,22 +22,27 @@ from torchvision import transforms
 cv2.setNumThreads(0)
 import numpy as np
 from scipy.spatial.transform import Rotation
-def compute_relative_pose(pose1, pose2):
-    # Extract translation and quaternion components
-    t1, t2 = np.array([pose1[:3]]), np.array([pose2[:3]])
-    q1, q2 = np.array([pose1[4], pose1[5], pose1[6], pose1[3]]), np.array([pose2[4], pose2[5], pose2[6], pose2[3]])
-    # Compute relative translation
-    relative_translation = t2 - t1
-    # Compute relative rotation
-    r1 = Rotation.from_quat(q1)
-    r2 = Rotation.from_quat(q2)
-    relative_rotation = r2 * r1.inv()
-    # Get relative rotation as a 4x4 matrix
-    relative_matrix = np.eye(4)
-    relative_matrix[:3, :3] = relative_rotation.as_matrix()
-    relative_matrix[:3, 3] = relative_translation.flatten()
-    relative_matrix_torch = torch.tensor(relative_matrix, dtype=torch.float32)
-    return relative_matrix_torch
+
+
+
+# def compute_relative_pose(pose1, pose2):
+#     # Extract translation and quaternion components
+#     t1, t2 = np.array([pose1[:3]]), np.array([pose2[:3]]) 
+#     q1, q2 = np.array([pose1[4], pose1[5], pose1[6], pose1[3]]), np.array([pose2[4], pose2[5], pose2[6], pose2[3]])
+
+#     # Compute transformation matrices
+#     T1 = np.eye(4)
+#     T1[:3, :3] = Rotation.from_quat(q1).as_matrix()
+#     T1[:3, 3] = t1.flatten()
+
+#     T2 = np.eye(4)
+#     T2[:3, :3] = Rotation.from_quat(q2).as_matrix()
+#     T2[:3, 3] = t2.flatten()
+
+#     # Compute relative transformation
+#     relative_matrix = np.linalg.inv(T2) @ T1
+#     relative_matrix_torch = torch.tensor(relative_matrix, dtype=torch.float32)
+#     return relative_matrix_torch
 def pil_loader(path):
     # open path as file to avoid ResourceWarning
     # (https://github.com/python-pillow/Pillow/issues/835)
@@ -57,11 +62,12 @@ class MonoDataset(data.Dataset):
                  frame_idxs,
                  num_scales,
                  is_train=False,
-                 img_ext='.jpg',
+                 img_ext='.png',
                  ):
         super(MonoDataset, self).__init__()
 
         self.data_path = data_path
+        self.root_dir = data_path
         self.filenames = filenames
         self.height = height
         self.width = width
@@ -157,41 +163,53 @@ class MonoDataset(data.Dataset):
         do_color_aug = False
         do_flip = self.is_train and random.random() > 0.5
 
-        folder, frame_index, side,pose_dict = self.index_to_folder_and_frame_idx(index)
+        image0, image1, image2,T_last_cur,T_future_cur,sparse_depth_0 = self.index_to_folder_and_frame_idx(index)
         poses = {}
-        if type(self).__name__ in ["CityscapesPreprocessedDataset", "CityscapesEvalDataset"]:
-            inputs.update(self.get_colors(folder, frame_index, side, do_flip))
-        else:
-            for i in self.frame_idxs:
-                if i == "s":
-                    other_side = {"r": "l", "l": "r"}[side]
-                    inputs[("color", i, -1)] = self.get_color(
-                        folder, frame_index, other_side, do_flip)
-                else:
-                    try:
-                        inputs[("color", i, -1)] = self.get_color(
-                            folder, frame_index + i, side, do_flip)
-                        #test
-                        if i != 0 and pose_dict is not None:
-                            folder, frame_index, side,pose_dict_i = self.index_to_folder_and_frame_idx(index + i)
-                            pose0 = [pose_dict['tx'], pose_dict['ty'], pose_dict['tz'], pose_dict['qw'], pose_dict['qx'], pose_dict['qy'], pose_dict['qz']]
-                            posei = [pose_dict_i['tx'], pose_dict_i['ty'], pose_dict_i['tz'], pose_dict_i['qw'], pose_dict_i['qx'], pose_dict_i['qy'], pose_dict_i['qz']]
-                            relative_matrix = compute_relative_pose(pose0, posei)
-                            inputs[("cam_T_cam", 0, i)] = relative_matrix
-                        #end of test
-                    except FileNotFoundError as e:
-                        if i != 0:
-                            # fill with dummy values
-                            inputs[("color", i, -1)] = \
-                                Image.fromarray(np.zeros((100, 100, 3)).astype(np.uint8))
-                            poses[i] = None
-                        else:
-                            raise FileNotFoundError(f'Cannot find frame - make sure your '
-                                                    f'--data_path is set correctly, or try adding'
-                                                    f' the --png flag. {e}')
+        inputs[("color", -1, -1)] = image1
+        inputs[("color", 0, -1)] = image0
+        inputs[("color", 1, -1)] = image2
+        inputs[("cam_T_cam", 0, -1)] = torch.tensor(T_last_cur, dtype=torch.float32)
+        inputs[("cam_T_cam", 0, 1)] = torch.tensor(T_future_cur, dtype=torch.float32)
+        inputs[("sparse_depth", 0)] = torch.tensor(sparse_depth_0, dtype=torch.float32)
+
+
+        # for i in self.frame_idxs:
+        #     # print("i:",i)
+        #     # try:
+        #     #     inputs[("color", i, -1)] = self.get_color(
+        #     #         folder, frame_index + i, side, do_flip)
+        #     #     print('inputs[("color", i, -1)].shape',inputs[("color", i, -1)].shape)
+        #         #test
+        #         if i != 0 and pose_dict is not None and index + i >= 0 and index + i < len(self.filenames):
+        #             # print(index + i)
+        #             folder_i, frame_index_i, side_i,pose_dict_i = self.index_to_folder_and_frame_idx(index + i)
+        #             pose0 = [pose_dict['tx'], pose_dict['ty'], pose_dict['tz'], pose_dict['qw'], pose_dict['qx'], pose_dict['qy'], pose_dict['qz']]
+        #             posei = [pose_dict_i['tx'], pose_dict_i['ty'], pose_dict_i['tz'], pose_dict_i['qw'], pose_dict_i['qx'], pose_dict_i['qy'], pose_dict_i['qz']]
+        #             relative_matrix = compute_relative_pose(pose0, posei)
+        #             inputs[("cam_T_cam", 0, i)] = relative_matrix
+        #         else:
+        #             pose0 = [pose_dict['tx'], pose_dict['ty'], pose_dict['tz'], pose_dict['qw'], pose_dict['qx'], pose_dict['qy'], pose_dict['qz']]
+        #             relative_matrix = compute_relative_pose(pose0, pose0)
+        #             inputs[("cam_T_cam", 0, i)] = relative_matrix
+        #         #end of test
+        #     except FileNotFoundError as e:
+        #         if i != 0:
+        #             # fill with dummy values
+        #             inputs[("color", i, -1)] = self.get_color(
+        #             folder, frame_index, side, do_flip)
+        #             poses[i] = None
+        #             pose0 = [pose_dict['tx'], pose_dict['ty'], pose_dict['tz'], pose_dict['qw'], pose_dict['qx'], pose_dict['qy'], pose_dict['qz']]
+        #             relative_matrix = compute_relative_pose(pose0, pose0)
+        #             inputs[("cam_T_cam", 0, i)] = relative_matrix
+        #         else:
+        #             raise FileNotFoundError(f'Cannot find frame - make sure your '
+        #                                     f'--data_path is set correctly, or try adding'
+        #                                     f' the --png flag. {e}')
 
         # adjusting intrinsics to match each scale in the pyramid
         for scale in range(self.num_scales):
+            folder = ""
+            frame_index = ""
             K = self.load_intrinsics(folder, frame_index)
 
             K[0, :] *= self.width // (2 ** scale)

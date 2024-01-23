@@ -3,3 +3,7 @@ checkpoints*
 checkpoints*/*
 splits/
 .vscode/
+*.bash
+manydepth/__pycache__
+manydepth/__pycache__/
+manydepth/__pycache__/*
